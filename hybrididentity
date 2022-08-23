@@ -1,0 +1,122 @@
+#set vars
+$loc = "westus"
+$rg = Read-Host "Enter name for ResourceGroup"
+$prefix = Read-Host "Enter prefix for Azure resources"
+$adminacc = Read-Host "Enter Local & Domain Admin username"
+$adminpw = Read-Host "Enter Local & Domain Admin password" -MaskInput
+$safemodepw = Read-Host "Enter AD DC safemode password" -MaskInput
+$tenantadminacc = Read-Host "Enter GA username"
+$tenantadminpw = Read-Host "Enter GA password" -MaskInput
+$certpw = Read-Host "Enter certificate password" -MaskInput
+$domain= Read-Host "Enter domain"
+$netbios = Read-Host "Enter DC NetBios name"
+$timezone = "W. Europe Standard Time"
+$autoshutdowntimeutc = "1900"
+$bastion=$false #include for non-WAP hosts
+$cd = Get-CloudDrive
+$key = az storage account keys list -g $cd.ResourceGroupName -n $cd.StorageAccountName --query [0].value -o tsv
+
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create Resource Group"
+az group create --name $prefix --location $loc --verbose
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create and configure Network Security Group"
+az network nsg create --resource-group "$($prefix)$($rg)" --name "$($prefix)vNet-NSG" --location $loc --verbose
+az network nsg rule create --name "PermitAnyRDP" --nsg-name  "$($prefix)vNet-NSG" --priority 1000 --resource-group "$($prefix)$($rg)" --access Allow --source-address-prefixes "*" --source-port-ranges "*" --direction Inbound --destination-port-ranges 3389 --verbose
+az network nsg rule create --name "PermitAnyHTTPS" --nsg-name  "$($prefix)vNet-NSG" --priority 1010 --resource-group "$($prefix)$($rg)" --access Allow --source-address-prefixes "*" --source-port-ranges "*" --direction Inbound --destination-port-ranges 443 --verbose
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create and configure Virtual Network"
+az network vnet create --resource-group "$($prefix)$($rg)" --name "$($prefix)vNet" --address-prefix 10.0.0.0/16 --subnet-name default --subnet-prefix 10.0.0.0/24 --location $loc --network-security-group "$($prefix)vNet-NSG"--dns-servers 10.0.0.4 --verbose
+if ($bastion) {
+	az network vnet subnet create --resource-group "$($prefix)$($rg)" --vnet-name "$($prefix)vNet" --name "AzureBastionSubnet" --address-prefixes 10.0.1.0/24 --verbose
+	az network public-ip create --resource-group "$($prefix)$($rg)" --name "$($prefix)vNet-PIP" --sku Standard --location $loc --verbose
+	az network bastion create --resource-group "$($prefix)$($rg)" --name "$($prefix)vNet-Bastion" --public-ip-address "$($prefix)vNet-PIP" --vnet-name "$($prefix)vNet" --location $loc --verbose
+}
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Deploy DC&FS Virtual Machine"
+az network public-ip create --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01-PIP" --allocation-method Static --verbose
+$dcfs01pip = az network public-ip show  --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01-PIP" --query "{address: ipAddress}" --out tsv
+az network nic create --resource-group "$($prefix)$($rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)dcfs01-NIC" --public-ip-address "$($prefix)dcfs01-PIP" --private-ip-address "10.0.0.4" --verbose
+az vm create --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --image Win2022Datacenter --admin-username $adminacc --admin-password $adminpw --size Standard_D2as_v4 --nsg '""' --generate-ssh-keys --os-disk-name "$($prefix)dcfs01-OsDisk" --public-ip-address '""' --nics "$($prefix)dcfs01-NIC" --verbose
+az vm disk attach  --resource-group "$($prefix)$($rg)"  --vm-name "$($prefix)dcfs01" --name "$($prefix)dcfs01-DataDisk" --size-gb 10 --new --verbose
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Configure DCFS Virtual Machine"
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Initialize-disk 2; New-Partition -DiskNumber 2 -AssignDriveLetter -UseMaximumSize; Format-Volume -DriveLetter F -FileSystem NTFS" --verbose
+#az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Install-PackageProvider -Name NuGet -Force; Install-Module -Name PSWindowsUpdate -force -confirm:`$false; Install-WindowsUpdate -AcceptAll -WithHidden -IgnoreReboot" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Set-TimeZone -Name '$timezone' -PassThru" --verbose
+if ($autoshutdowntimeutc -ne "") { az vm auto-shutdown --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --time $autoshutdowntimeutc }
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Add ADDS feature and promote to DC"
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Add-WindowsFeature AD-Domain-Services -IncludeManagementTools" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Import-Module ADDSDeployment; Install-ADDSForest -CreateDnsDelegation:`$false -DatabasePath 'F:\NTDS' -DomainMode 'WinThreshold' -DomainName $domain -DomainNetbiosName '$prefix' -ForestMode 'WinThreshold' -InstallDns:`$true -LogPath 'F:\Logs' -NoRebootOnCompletion:`$false -SysvolPath 'F:\SYSVOL' -Force:`$true -SkipPreChecks -SafeModeAdministratorPassword (ConvertTo-SecureString $safemodepw -AsPlainText -Force) -NoRebootOnCompletion" --verbose
+az vm restart --name "$($prefix)dcfs01" --resource-group "$($prefix)$($rg)" --force --verbose
+Write-Host "############"
+Write-Host "## PAUSE - Wait for reboot, connect via RDP ($($dcfs01pip):3389) and upload certificate as `"cert.pfx`" in `"C:\users\$($adminacc)`""
+Write-Host "############"
+Pause
+#alternative -> Download cert.pfx from CloudDrive - TODO VERIFY - commented for now
+#az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "cmdkey /add:`"($cd.Name).file.core.windows.net`" /user:`"localhost\($cd.Name)`" /pass:`"$key`"" --verbose                                                
+#az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '($cd.Name).file.core.windows.net\($cd.FileShareName)'; Copy-Item -Path `"Z:\cert.pfx`" -Destination `"C:\users\azureuser\cert.pfx`"" --verbose
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Add ADFS feature and configure federation service"
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Import-PfxCertificate -FilePath 'C:\Users\$adminacc\cert.pfx' -CertStoreLocation Cert:\LocalMachine\My -Password (ConvertTo-SecureString -String '$certpw' -AsPlainText -Force )" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Enable-ADOptionalFeature 'Recycle Bin Feature' -Scope ForestOrConfigurationSet -Target '$domain' -Confirm:`$false" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-ADOrganizationalUnit `"SyncAADC`"; New-ADOrganizationalUnit `"Sync_CPA`"; " --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Add-KdsRootKey -EffectiveTime (Get-Date).AddHours(-10)" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Add-WindowsFeature adfs-federation -IncludeManagementTools" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" -n "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$thumbprint = (Get-ChildItem Cert:\LocalMachine\My | where{`$_.Subject -eq 'CN=$domain'}).thumbprint; Import-Module ADFS; Install-AdfsFarm -CertificateThumbprint:`$thumbprint -FederationServiceDisplayName:'FS $domain' -FederationServiceName:'fs.$domain' -GroupServiceAccountIdentifier:'$prefix\fsgMSA`$' -Credential (New-Object System.Management.Automation.PSCredential -ArgumentList ('$adminacc@$domain', (ConvertTo-SecureString -String '$adminpw' -AsPlainText -Force )))" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Import-Module ADFS; Set-AdfsProperties -EnableIdPInitiatedSignonPage `$true" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Add-DnsServerResourceRecordA -Name 'fs' -ZoneName '$domain' -AllowUpdateAny -IPv4Address '10.0.0.4'" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Add-DnsServerResourceRecordAAAA -Name 'fs' -ZoneName '$domain' -AllowUpdateAny -IPv6Address '0:0:0:0:0:0:0:1'" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Add-DnsServerResourceRecordCName -Name 'enterpriseregistration' -HostNameAlias 'fs.$domain' -ZoneName '$domain'" --verbose
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Enable additional Federation Service features"
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Initialize-ADDeviceRegistration -ServiceAccountName '$prefix\fsgMSA`$' -Credential (New-Object System.Management.Automation.PSCredential -ArgumentList ('$adminacc@$domain', (ConvertTo-SecureString -String '$adminpw' -AsPlainText -Force ))) -Force; Enable-AdfsDeviceRegistration -Credential (New-Object System.Management.Automation.PSCredential -ArgumentList ('$adminacc@$domain', (ConvertTo-SecureString -String '$adminpw' -AsPlainText -Force )))" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$winIntegratedAuth = (Get-ADFSProperties | Select -ExpandProperty WIASupportedUserAgents);`$winIntegratedAuth+='Mozilla/5.0';Set-ADFSProperties -WIASupportedUserAgents `$winIntegratedAuth" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Set-AdfsGlobalAuthenticationPolicy -WindowsIntegratedFallbackEnabled `$true" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "restart-service adfssrv" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-Item -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2' -Force;New-Item -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client' -Force;New-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client' -Name 'DisabledByDefault' -Value '0' -PropertyType Dword;New-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client' -Name 'Enabled' -Value '1' -PropertyType Dword;New-Item -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Server' -Force;New-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Server' -Name 'DisabledByDefault' -Value '0' -PropertyType Dword;New-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Server' -Name 'Enabled' -Value '1' -PropertyType Dword;" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Set-AdfsEndpoint -TargetAddressPath /adfs/services/trust/2005/windowstransport -Proxy `$false; Set-AdfsEndpoint -TargetAddressPath /adfs/services/trust/13/windowstransport -Proxy `$false" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "auditpol.exe /set /subcategory:'Application Generated' /failure:enable /success:enable" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Set-AdfsProperties -EnableExtranetLockout `$true" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Install-PackageProvider -Name NuGet -Force; Install-Module -Name ADFSToolbox -force; Import-Module ADFSToolbox -force; Export-AdfsDiagnosticsFile -ServerNames '$($prefix)dcfs01'" --verbose
+Write-Host "Find the DiagnosticFile in C:\Packages\Plugins\Microsoft.CPlat.Core.RunCommandWindows\1.1.11\Downloads"
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Install & register ADFS Connect Health on dcfs01"
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.microsoft.com/download/9/F/5/9F53F124-C990-42D2-8A32-6D352A67762B/AdHealthAdfsAgentSetup.exe' -OutFile 'C:\users\$adminacc\Downloads\AdHealthAdfsAgentSetup.exe'" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'c:\users\$adminacc\Downloads\AdHealthAdfsAgentSetup.exe' /quiet" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Import-Module 'C:\Program Files\Azure Ad Connect Health Adfs Agent\PowerShell\AdHealthAdfs'; Register-AzureADConnectHealthADFSAgent -Credential (New-Object System.Management.Automation.PSCredential -ArgumentList ('$tenantadminacc', (ConvertTo-SecureString -String '$tenantadminpw' -AsPlainText -Force )))" --verbose
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Install & register ADDS Connect Health on dcfs01"
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.microsoft.com/download/C/4/5/C45F6F42-E59C-46B3-9CB1-941CA4AB1482/AdHealthAddsAgentSetup.exe' -OutFile 'C:\users\$adminacc\Downloads\AdHealthAddsAgentSetup.exe'" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'c:\users\$adminacc\Downloads\AdHealthAddsAgentSetup.exe' /quiet" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Import-Module 'C:\Program Files\Azure Ad Connect Health Adds Agent\PowerShell\AdHealthAdds'; Register-AzureADConnectHealthADDSAgent -Credential (New-Object System.Management.Automation.PSCredential -ArgumentList ('$tenantadminacc', (ConvertTo-SecureString -String '$tenantadminpw' -AsPlainText -Force )))" --verbose
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Install AADConnect on dcfs01"
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.microsoft.com/download/B/0/0/B00291D0-5A83-4DE7-86F5-980BC00DE05A/AzureADConnect.msi' -OutFile 'C:\users\$adminacc\Downloads\AzureADConnect.msi'" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'C:\users\$adminacc\Downloads\AzureADConnect.msi' /quiet" --verbose
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Install Cloud Provisioning Agent on dcfs01"
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.msappproxy.net/Subscription/d3c8b69d-6bf7-42be-a529-3fe9c2e70c90/Connector/previewProvisioningAgentInstaller' -OutFile 'C:\users\$adminacc\Downloads\AADConnectProvisioningAgentSetup.exe'" --output json --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --n "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'c:\users\$adminacc\Downloads\AADConnectProvisioningAgentSetup.exe' /quiet -NoNewWindow -PassThru; `$installerProcess.WaitForExit()" --output json --verbose
+
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] WAP: Deploy WAP Virtual Machine"
+az network public-ip create --resource-group "$($prefix)$($rg)" --name "$($prefix)wap01-PIP" --allocation-method Static --verbose
+$wap01pip = az network public-ip show  --resource-group "$($prefix)$($rg)" --name "$($prefix)wap01-PIP" --query "{address: ipAddress}" --out tsv
+az network nic create --resource-group "$($prefix)$($rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)wap01-NIC" --public-ip-address "$($prefix)wap01-PIP" --private-ip-address "10.0.0.10" --verbose
+az vm create --resource-group "$($prefix)$($rg)" --name "$($prefix)wap01" --image Win2022Datacenter --admin-username $adminacc --admin-password $adminpw --size Standard_D2as_v4 --nsg '""' --generate-ssh-keys --os-disk-name "$($prefix)wap01-OsDisk" --public-ip-address '""' --nics "$($prefix)wap01-NIC" --verbose
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] WAP: Configure WAP Virtual Machine"
+az vm run-command invoke --resource-group "$($prefix)$($rg)" -n "$($prefix)wap01" --command-id RunPowerShellScript --scripts "Install-WindowsFeature Web-Application-Proxy -IncludeManagementTools" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "Set-TimeZone -Name '$timezone' -PassThru" --verbose
+if ($autoshutdowntimeutc -ne "") { az vm auto-shutdown --resource-group $prefix --name "$($prefix)wap01" --time $autoshutdowntimeutc }
+
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Add RemoteDesktop feature"
+#az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "Install-PackageProvider -Name NuGet -Force; Install-Module -Name PSWindowsUpdate -force -confirm:`$false; Install-WindowsUpdate -AcceptAll -WithHidden -IgnoreReboot" --verbose
+az vm restart --name "$($prefix)wap01" --resource-group "$($prefix)$($rg)" --force --verbose
+Write-Host "############"
+Write-Host "## PAUSE - Wait for reboot, connect via RDP ($($wap01pip):3389) and upload certificate as `"cert.pfx`" in `"C:\users\$($adminacc)`""
+Write-Host "############"
+Pause
+#alternative -> Download cert.pfx from CloudDrive - TODO VERIFY - commented for now
+#az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "cmdkey /add:`"($cd.Name).file.core.windows.net`" /user:`"localhost\($cd.Name)`" /pass:`"$key`"" --verbose                                                
+#az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '($cd.Name).file.core.windows.net\($cd.FileShareName)'; Copy-Item -Path `"Z:\cert.pfx`" -Destination `"C:\users\azureuser\cert.pfx`"" --verbose
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Enable and configure Remote Access feature"
+az vm run-command invoke --resource-group "$($prefix)$($rg)" -n "$($prefix)wap01" --command-id RunPowerShellScript --scripts "Import-PfxCertificate -FilePath 'C:\Users\$adminacc\cert.pfx' -CertStoreLocation Cert:\LocalMachine\My -Password (ConvertTo-SecureString -String '$certpw' -AsPlainText -Force)" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" -n "$($prefix)wap01" --command-id RunPowerShellScript --scripts "`$file = ((Get-Content 'C:\Windows\System32\drivers\etc\hosts') -as [Collections.ArrayList]);`$file.insert(0,'10.0.0.4 fs.$domain');`$file | Set-Content 'C:\Windows\System32\drivers\etc\hosts' -force" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "New-Item -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3' -Force;New-Item -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Client' -Force;New-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Client' -Name 'DisabledByDefault' -Value '1' -PropertyType Dword;New-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Client' -Name 'Enabled' -Value '0' -PropertyType Dword;New-Item -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Server' -Force;New-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Server' -Name 'DisabledByDefault' -Value '1' -PropertyType Dword;New-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.3\Server' -Name 'Enabled' -Value '0' -PropertyType Dword;" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" -n "$($prefix)wap01" --command-id RunPowerShellScript --scripts "`$thumbprint = (Get-ChildItem Cert:\LocalMachine\My | where{`$_.Subject -eq 'CN=$domain'}).thumbprint; Install-WebApplicationProxy -FederationServiceTrustCredential (New-Object System.Management.Automation.PSCredential -ArgumentList ('$adminacc', (ConvertTo-SecureString -String '$adminpw' -AsPlainText -Force ))) -CertificateThumbprint `$thumbprint -FederationServiceName 'fs.$domain' " --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" -n "$($prefix)wap01" --command-id RunPowerShellScript --scripts "`$thumbprint = (Get-ChildItem Cert:\LocalMachine\My | where{`$_.Subject -eq 'CN=$domain'}).thumbprint; Add-WebApplicationProxyApplication -BackendServerUrl 'https://fs.$domain' -ExternalCertificateThumbprint `$thumbprint -EnableHTTPRedirect:`$true -ExternalUrl 'https://fs.$domain' -Name 'ADFS' -ExternalPreAuthentication PassThrough" --verbose
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Install & register ADFS Connect Health on wap01"
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.microsoft.com/download/9/F/5/9F53F124-C990-42D2-8A32-6D352A67762B/AdHealthAdfsAgentSetup.exe' -OutFile 'C:\users\$adminacc\Downloads\AdHealthAdfsAgentSetup.exe'" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'c:\users\$adminacc\Downloads\AdHealthAdfsAgentSetup.exe' /quiet" --verbose
+az vm run-command invoke --resource-group "$($prefix)$($rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "Import-Module 'C:\Program Files\Azure Ad Connect Health Adfs Agent\PowerShell\AdHealthAdfs'; Register-AzureADConnectHealthADFSAgent -Credential (New-Object System.Management.Automation.PSCredential -ArgumentList ('$tenantadminacc', (ConvertTo-SecureString -String '$tenantadminpw' -AsPlainText -Force )))" --verbose
+Write-Host "Action: Modify public DNS record"
+Write-Host "Add A-record for 'fs.$($domain)' pointing to $($wap01pip)"
