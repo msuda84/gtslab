@@ -138,4 +138,4 @@ Write-Host "Add A-record for 'fs.$($domain)' pointing to $($wap01pip)"
 az vm restart --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --force --verbose
 
 $end = Get-Date
-Write-Host "Overall it lasted ($end-$start).Seconds sec to install the Hybrid Identity lab"
+Write-Host "Overall it took $(($end-$start).Seconds)sec to install the Hybrid Identity lab"
