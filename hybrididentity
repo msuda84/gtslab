@@ -52,8 +52,7 @@ if ($certExists -eq "True") {
 	Write-Host "## Using cert.pfx located in $($cd.FileSharePath)"
 	Write-Host "############"
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "cmdkey /add:`"$($cd.Name).file.core.windows.net`" /user:`"localhost\$($cd.Name)`" /pass:`"$key`"" --verbose
-	Sleep 10
-	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Copy-Item -Path `"Z:\cert.pfx`" -Destination `"C:\Users\azureuser\cert.pfx`"" --verbose
+	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Sleep 10; Copy-Item -Path `"Z:\cert.pfx`" -Destination `"C:\Users\$adminacc\cert.pfx`"" --verbose
 } else {
 	Write-Host "############"
 	Write-Host "## cert.pfx not found in CloudShare-folder, connect via RDP ($($dcfs01pip):3389) and upload certificate as `"cert.pfx`" in `"C:\users\$($adminacc)`""
@@ -117,8 +116,7 @@ if ($certExists -eq "True") {
 	Write-Host "## Using cert.pfx located in $($cd.FileSharePath)"
 	Write-Host "############"
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "cmdkey /add:`"$($cd.Name).file.core.windows.net`" /user:`"localhost\$($cd.Name)`" /pass:`"$key`"" --verbose
-	Sleep 10
-	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Copy-Item -Path `"Z:\cert.pfx`" -Destination `"C:\Users\$adminacc\cert.pfx`"" --verbose
+	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Sleep 10; Copy-Item -Path `"Z:\cert.pfx`" -Destination `"C:\Users\$adminacc\cert.pfx`"" --verbose
 } else {
 	Write-Host "############"
 	Write-Host "## cert.pfx not found in CloudShare-folder, connect via RDP ($($wap01pip):3389) and upload certificate as `"cert.pfx`" in `"C:\users\$($adminacc)`""
