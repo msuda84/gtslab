@@ -43,7 +43,7 @@ az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcf
 if ($autoshutdowntimeutc -ne "") { az vm auto-shutdown --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --time $autoshutdowntimeutc }
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Add ADDS feature and promote"
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Add-WindowsFeature AD-Domain-Services -IncludeManagementTools" --verbose
-az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Import-Module ADDSDeployment; Install-ADDSForest -CreateDnsDelegation:`$false -DatabasePath 'F:\NTDS' -DomainMode 'WinThreshold' -DomainName $domain -DomainNetbiosName '$prefix' -ForestMode 'WinThreshold' -InstallDns:`$true -LogPath 'F:\Logs' -NoRebootOnCompletion:`$true -SysvolPath 'F:\SYSVOL' -Force:`$true -SkipPreChecks -SafeModeAdministratorPassword (ConvertTo-SecureString $safemodepw -AsPlainText -Force)" --verbose
+az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Import-Module ADDSDeployment; Install-ADDSForest -CreateDnsDelegation:`$false -DatabasePath 'F:\NTDS' -DomainMode 'WinThreshold' -DomainName $domain -DomainNetbiosName '$netbios' -ForestMode 'WinThreshold' -InstallDns:`$true -LogPath 'F:\Logs' -NoRebootOnCompletion:`$true -SysvolPath 'F:\SYSVOL' -Force:`$true -SkipPreChecks -SafeModeAdministratorPassword (ConvertTo-SecureString $safemodepw -AsPlainText -Force)" --verbose
 az vm restart --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --force --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Import PFX as Federation Service requirement"
 $certExists = az storage file exists --account-key $key --account-name $cd.StorageAccountName --path cert.pfx --share-name $cd.FileShareName --out tsv
@@ -138,4 +138,4 @@ Write-Host "Add A-record for 'fs.$($domain)' pointing to $($wap01pip)"
 az vm restart --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --force --verbose
 
 $end = Get-Date
-Write-Host "Overall it lasted ($end-$start).Seconds sec to install the Hybrid Identity lab"
+Write-Host "Overall it took ($end-$start).Seconds sec to install the Hybrid Identity lab"
