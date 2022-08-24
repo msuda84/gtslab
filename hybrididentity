@@ -51,8 +51,9 @@ if ($certExists -eq "True") {
 	Write-Host "############"
 	Write-Host "## Using cert.pfx located in $($cd.FileSharePath)"
 	Write-Host "############"
-	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "cmdkey /add:`"$($cd.Name).file.core.windows.net`" /user:`"localhost\$($cd.Name)`" /pass:`"$key`"" --verbose            
-	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Copy-Item -Path `"Z:\cert.pfx`" -Destination `"C:\Users\$adminacc\cert.pfx`"" --verbose
+	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "cmdkey /add:`"$($cd.Name).file.core.windows.net`" /user:`"localhost\$($cd.Name)`" /pass:`"$key`"" --verbose
+	Sleep 10
+	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Copy-Item -Path `"Z:\cert.pfx`" -Destination `"C:\Users\azureuser\cert.pfx`"" --verbose
 } else {
 	Write-Host "############"
 	Write-Host "## cert.pfx not found in CloudShare-folder, connect via RDP ($($dcfs01pip):3389) and upload certificate as `"cert.pfx`" in `"C:\users\$($adminacc)`""
@@ -115,7 +116,8 @@ if ($certExists -eq "True") {
 	Write-Host "############"
 	Write-Host "## Using cert.pfx located in $($cd.FileSharePath)"
 	Write-Host "############"
-	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "cmdkey /add:`"$($cd.Name).file.core.windows.net`" /user:`"localhost\$($cd.Name)`" /pass:`"$key`"" --verbose            
+	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "cmdkey /add:`"$($cd.Name).file.core.windows.net`" /user:`"localhost\$($cd.Name)`" /pass:`"$key`"" --verbose
+	Sleep 10
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Copy-Item -Path `"Z:\cert.pfx`" -Destination `"C:\Users\$adminacc\cert.pfx`"" --verbose
 } else {
 	Write-Host "############"
@@ -138,3 +140,4 @@ Write-Host "Add A-record for 'fs.$($domain)' pointing to $($wap01pip)"
 az vm restart --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --force --verbose
 
 $end = Get-Date
+Write-Host "Overall it lasted ($end-$start).Seconds sec to install the Hybrid Identity lab"
