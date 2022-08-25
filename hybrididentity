@@ -12,7 +12,7 @@ $netbios = $domain.split(".")[0]
 $timezone = "W. Europe Standard Time"
 $ynAutoShutdownUTC = Read-Host "Want to shutdown VMs at 7pm UTC? (y/n)"; while("y","n" -notcontains $ynAutoShutdownUTC ) { $ynAutoShutdownUTC = Read-Host "Want to shutdown VMs at 7pm UTC? (y/n)" }
 $ynBastion = Read-Host "Want to deploy BastionHost to connect via Browser? (y/n)"; while("y","n" -notcontains $ynBastion) { $ynBastion = Read-Host "Want to deploy BastionHost to connect via Browser? (y/n)" }
-$ynInstallAADHealthSet = Read-Host "Want to enable ADDS/AFS Health services (requieres non-MFA'd GA)? (y/n)"; while("y","n" -notcontains $ynBastion) { $ynInstallAADHealthSet = Read-Host "Want to enable ADDS/AFS Health services (requieres non-MFA'd GA)" }
+$ynInstallAADHealthSet = Read-Host "Want to enable ADDS/AFS Health services (requires non-MFA'd GA)? (y/n)"; while("y","n" -notcontains $ynBastion) { $ynInstallAADHealthSet = Read-Host "Want to enable ADDS/AFS Health services (requieres non-MFA'd GA)" }
 If ($ynInstallAADHealthSet -eq "y") {
 	$tenantadminacc = Read-Host "Enter GA username"
 	$tenantadminpw = Read-Host "Enter GA password" -MaskInput
