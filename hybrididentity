@@ -5,7 +5,7 @@ $rg = Read-Host "Enter name for ResourceGroup"
 $prefix = Read-Host "Enter prefix for Azure resources"
 $adminacc = Read-Host "Enter Local & Domain Admin username"
 $adminpw = Read-Host "Enter Local & Domain Admin password" -MaskInput
-$safemodepw = Read-Host "Enter AD DC safemode password" -MaskInput
+$safemodepw = ([char[]]([char]33..[char]95) + ([char[]]([char]97..[char]126)) + 0..9 | sort {Get-Random})[0..12] -join ''
 $certpw = Read-Host "Enter certificate password" -MaskInput
 $domain= Read-Host "Enter domain"
 $netbios = $domain.split(".")[0]
@@ -21,7 +21,7 @@ $cd = Get-CloudDrive
 $key = az storage account keys list -g $cd.ResourceGroupName -n $cd.StorageAccountName --query [0].value -o tsv
 
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create Resource Group"
-az group create --name $prefix --location $loc --verbose
+az group create --name "$($prefix+$rg)"  --location $loc --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create and configure Network Security Group"
 az network nsg create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet-NSG" --location $loc --verbose
 az network nsg rule create --resource-group "$($prefix+$rg)" --nsg-name "$($prefix)vNet-NSG" --name "PermitAnyRDP" --priority 1000 --access Allow --source-address-prefixes "*" --source-port-ranges "*" --direction Inbound --destination-port-ranges 3389 --verbose
@@ -58,7 +58,7 @@ if ($certExists -eq "True") {
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Copy-Item -Path 'Z:\cert.pfx' -Destination 'C:\Users\cert.pfx'" --verbose
 } else {
 	Write-Host "############"
-	Write-Host "## cert.pfx not found in CloudShare-folder, connect via RDP ($($dcfs01pip):3389) and upload certificate as `"cert.pfx`" in `"C:\users\$($adminacc)`""
+	Write-Host "## cert.pfx not found in CloudShare-folder, connect via RDP ($($dcfs01pip):3389) and upload certificate as `"cert.pfx`" in `"C:\users\`""
 	Write-Host "############"
 	Pause
 }
@@ -84,23 +84,23 @@ az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcf
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Set-AdfsProperties -EnableExtranetLockout `$true" --verbose
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Install-Module -Name ADFSToolbox -force; Import-Module ADFSToolbox -force; Export-AdfsDiagnosticsFile -ServerNames '$($prefix)dcfs01'" --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Install & register (opt.) ADFS/ADDS Connect Health on dcfs01"
-az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.microsoft.com/download/9/F/5/9F53F124-C990-42D2-8A32-6D352A67762B/AdHealthAdfsAgentSetup.exe' -OutFile 'F:\AdHealthAdfsAgentSetup.exe'" --verbose
-az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'F:\AdHealthAdfsAgentSetup.exe' /quiet" --verbose
+az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.microsoft.com/download/9/F/5/9F53F124-C990-42D2-8A32-6D352A67762B/AdHealthAdfsAgentSetup.exe' -OutFile 'C:\Users\AdHealthAdfsAgentSetup.exe'" --verbose
+az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'C:\Users\AdHealthAdfsAgentSetup.exe' /quiet" --verbose
 if ($ynInstallAADHealthSet -eq "y") {
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Import-Module 'C:\Program Files\Azure Ad Connect Health Adfs Agent\PowerShell\AdHealthAdfs'; Register-AzureADConnectHealthADFSAgent -Credential (New-Object System.Management.Automation.PSCredential -ArgumentList ('$tenantadminacc', (ConvertTo-SecureString -String '$tenantadminpw' -AsPlainText -Force )))" --verbose
 }
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Install & register ADDS Connect Health on dcfs01"
-az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.microsoft.com/download/C/4/5/C45F6F42-E59C-46B3-9CB1-941CA4AB1482/AdHealthAddsAgentSetup.exe' -OutFile 'F:\AdHealthAddsAgentSetup.exe'" --verbose
-az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'F:\AdHealthAddsAgentSetup.exe' /quiet" --verbose
+az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.microsoft.com/download/C/4/5/C45F6F42-E59C-46B3-9CB1-941CA4AB1482/AdHealthAddsAgentSetup.exe' -OutFile 'C:\Users\AdHealthAddsAgentSetup.exe'" --verbose
+az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'C:\Users\AdHealthAddsAgentSetup.exe' /quiet" --verbose
 if ($ynInstallAADHealthSet -eq "y") {
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Import-Module 'C:\Program Files\Azure Ad Connect Health Adds Agent\PowerShell\AdHealthAdds'; Register-AzureADConnectHealthADDSAgent -Credential (New-Object System.Management.Automation.PSCredential -ArgumentList ('$tenantadminacc', (ConvertTo-SecureString -String '$tenantadminpw' -AsPlainText -Force )))" --verbose
 }
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Install AADConnect on dcfs01"
-az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.microsoft.com/download/B/0/0/B00291D0-5A83-4DE7-86F5-980BC00DE05A/AzureADConnect.msi' -OutFile 'F:\AzureADConnect.msi'" --verbose
-az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'F:\AzureADConnect.msi' /quiet" --verbose
+az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.microsoft.com/download/B/0/0/B00291D0-5A83-4DE7-86F5-980BC00DE05A/AzureADConnect.msi' -OutFile 'C:\Users\AzureADConnect.msi'" --verbose
+az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'C:\Users\AzureADConnect.msi' /quiet" --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Install Cloud Provisioning Agent on dcfs01"
-az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.msappproxy.net/Subscription/d3c8b69d-6bf7-42be-a529-3fe9c2e70c90/Connector/previewProvisioningAgentInstaller' -OutFile 'F:\AADConnectProvisioningAgentSetup.exe'" --output json --verbose
-az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'F:\AADConnectProvisioningAgentSetup.exe' /quiet -NoNewWindow -PassThru; `$installerProcess.WaitForExit()" --output json --verbose
+az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.msappproxy.net/Subscription/d3c8b69d-6bf7-42be-a529-3fe9c2e70c90/Connector/previewProvisioningAgentInstaller' -OutFile 'C:\Users\AADConnectProvisioningAgentSetup.exe'" --output json --verbose
+az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'C:\Users\AADConnectProvisioningAgentSetup.exe' /quiet -NoNewWindow -PassThru; `$installerProcess.WaitForExit()" --output json --verbose
 
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] WAP: Deploy WAP Virtual Machine"
 az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)wap01-PIP" --allocation-method Static --verbose
@@ -136,8 +136,8 @@ az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "`$thumbprint = (Get-ChildItem Cert:\LocalMachine\My | where{`$_.Subject -eq 'CN=$domain'}).thumbprint; Install-WebApplicationProxy -FederationServiceTrustCredential (New-Object System.Management.Automation.PSCredential -ArgumentList ('$adminacc', (ConvertTo-SecureString -String '$adminpw' -AsPlainText -Force ))) -CertificateThumbprint `$thumbprint -FederationServiceName 'fs.$domain' " --verbose
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "`$thumbprint = (Get-ChildItem Cert:\LocalMachine\My | where{`$_.Subject -eq 'CN=$domain'}).thumbprint; Add-WebApplicationProxyApplication -BackendServerUrl 'https://fs.$domain' -ExternalCertificateThumbprint `$thumbprint -EnableHTTPRedirect:`$true -ExternalUrl 'https://fs.$domain' -Name 'ADFS' -ExternalPreAuthentication PassThrough" --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Install & register (opt.) ADFS Connect Health on wap01"
-az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.microsoft.com/download/9/F/5/9F53F124-C990-42D2-8A32-6D352A67762B/AdHealthAdfsAgentSetup.exe' -OutFile 'C:\users\AdHealthAdfsAgentSetup.exe'" --verbose
-az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'c:\users\AdHealthAdfsAgentSetup.exe' /quiet" --verbose
+az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.microsoft.com/download/9/F/5/9F53F124-C990-42D2-8A32-6D352A67762B/AdHealthAdfsAgentSetup.exe' -OutFile 'C:\Users\AdHealthAdfsAgentSetup.exe'" --verbose
+az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "`$installerProcess=Start-Process 'c:\Users\AdHealthAdfsAgentSetup.exe' /quiet" --verbose
 if ($ynInstallAADHealthSet -eq "y") {
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "Import-Module 'C:\Program Files\Azure Ad Connect Health Adfs Agent\PowerShell\AdHealthAdfs'; Register-AzureADConnectHealthADFSAgent -Credential (New-Object System.Management.Automation.PSCredential -ArgumentList ('$tenantadminacc', (ConvertTo-SecureString -String '$tenantadminpw' -AsPlainText -Force )))" --verbose
 }
@@ -146,6 +146,7 @@ Write-Host "Add A-record for 'fs.$($domain)' pointing to $($wap01pip)"
 az vm restart --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --force --verbose
 
 $end = Get-Date
-Write-Host "dcfs01 Public IP: $($dcfs01pip)"
-Write-Host "wap01 Public IP: $($wap01pip)"
+Write-Host "dcfs01 Public IP: $($dcfs01pip) - Authenticate using $($netbios)\$($adminacc)"
+Write-Host "wap01 Public IP: $($wap01pip) - Authenticate using $($adminacc)"
+Write-Host "SafeMode admin password used: $safemodepw"
 Write-Host "Overall it took $(($end-$start).Seconds)sec to install the Hybrid Identity lab"
