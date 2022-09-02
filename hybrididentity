@@ -1,7 +1,7 @@
-$ynSubscription = Read-Host "Confirm: Lab will be deployed on subscription $(az account show --query 'name') (y/n)"; while("y","n" -notcontains $ynSubscription ) { $ynSubscription = Read-Host "Confirm: Lab will be deployed on subscription $(az account show --query 'name') (y/n)" }
+$ynSubscription = Read-Host "Confirm: Lab will be deployed on subscription $(az account show --query 'name' (ID: $(az account show --query 'id')) (y/n)"; while("y","n" -notcontains $ynSubscription ) { $ynSubscription = Read-Host "Confirm: Lab will be deployed on subscription $(az account show --query 'name' (ID: $(az account show --query 'id')) (y/n)" }
 
 If ($ynSubscription -eq "n") {
-	Write-Host "Use `"az account set <subscription>`" to set context" 
+	Write-Host ">> Canceling the script. Use `"az account set <subscription>`" first to set context and run again".
 	break
 }
 
