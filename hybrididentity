@@ -1,3 +1,10 @@
+$ynSubscription = Read-Host "Confirm: Lab will be deployed on subscription $(az account show --query 'name') (y/n)"; while("y","n" -notcontains $ynSubscription ) { $ynSubscription = Read-Host "Confirm: Lab will be deployed on subscription $(az account show --query 'name') (y/n)" }
+
+If ($ynSubscription -eq "n") {
+	Write-Host "Use `"az account set <subscription>`" to set context" 
+	break
+}
+
 #set vars
 $start = Get-Date
 $loc = "westus"
