@@ -43,7 +43,7 @@ Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Deploy DC&FS Virtual Machi
 az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --allocation-method Static --verbose
 $dcfs01pip = az network public-ip show --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --query "{address: ipAddress}" --out tsv
 az network nic create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)dcfs01-NIC" --public-ip-address "$($prefix)dcfs01-PIP" --private-ip-address "10.0.0.4" --verbose
-az vm create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --image Win2022Datacenter --admin-username $adminacc --admin-password $adminpw --size Standard_D2as_v4 --nsg '""' --generate-ssh-keys --os-disk-name "$($prefix)dcfs01-OsDisk" --public-ip-address '""' --nics "$($prefix)dcfs01-NIC" --verbose
+az vm create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --image Win2022Datacenter --admin-username $adminacc --admin-password $adminpw --size Standard_D2s_v5 --nsg '""' --generate-ssh-keys --os-disk-name "$($prefix)dcfs01-OsDisk" --public-ip-address '""' --nics "$($prefix)dcfs01-NIC" --verbose
 az vm disk attach --resource-group "$($prefix+$rg)"  --vm-name "$($prefix)dcfs01" --name "$($prefix)dcfs01-DataDisk" --size-gb 10 --new --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Configure DCFS Virtual Machine"
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Set-Volume -FileSystemLabel 'Windows' -NewFileSystemLabel 'OSDisk'; Initialize-disk 2; New-Partition -DiskNumber 2 -AssignDriveLetter -UseMaximumSize; Format-Volume -DriveLetter F -FileSystem NTFS -NewFileSystemLabel 'DataDisk'" --verbose
@@ -112,7 +112,7 @@ Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] WAP: Deploy WAP Virtual Machine"
 az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)wap01-PIP" --allocation-method Static --verbose
 $wap01pip = az network public-ip show  --resource-group "$($prefix)$($rg)" --name "$($prefix)wap01-PIP" --query "{address: ipAddress}" --out tsv
 az network nic create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)wap01-NIC" --public-ip-address "$($prefix)wap01-PIP" --private-ip-address "10.0.0.10" --verbose
-az vm create --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --image Win2022Datacenter --admin-username $adminacc --admin-password $adminpw --size Standard_D2as_v4 --nsg '""' --generate-ssh-keys --os-disk-name "$($prefix)wap01-OsDisk" --public-ip-address '""' --nics "$($prefix)wap01-NIC" --verbose
+az vm create --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --image Win2022Datacenter --admin-username $adminacc --admin-password $adminpw --size Standard_D2s_v5 --nsg '""' --generate-ssh-keys --os-disk-name "$($prefix)wap01-OsDisk" --public-ip-address '""' --nics "$($prefix)wap01-NIC" --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] WAP: Configure WAP Virtual Machine"
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "Set-Volume -FileSystemLabel 'Windows' -NewFileSystemLabel 'OSDisk'" --verbose 
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "Install-WindowsFeature Web-Application-Proxy -IncludeManagementTools" --verbose
