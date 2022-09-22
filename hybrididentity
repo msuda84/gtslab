@@ -23,7 +23,7 @@ if ($availableSizes -notcontains $size) {
 $rg = Read-Host "Enter name for ResourceGroup"
 $prefix = Read-Host "Enter prefix for Azure resources"
 
-$rgExists = az group show --name "$($prefix+$rg)"
+$rgExists = az group exists --name $($prefix+$rg)
 if ($rgExists) {
 	$ynDelete = Read-Host "Confirm: Given ResourceGroup name '$($prefix+$rg)' already exists. Delete ResourceGroup to start all over (y/n)?"; while("y","n" -notcontains $ynDelete ) { $ynDelete = Read-Host "Confirm: Given ResourceGroup name '$($prefix+$rg)' already exists. Delete ResourceGroup to start all over (y/n)?" }
 	if ($ynDelete -eq 'y') {
