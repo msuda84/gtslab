@@ -1,4 +1,6 @@
-$ynSubscription = Read-Host "Confirm: Hybrid identity lab will be deployed on subscription $(az account show --query 'name') (ID: $(az account show --query 'id')) (y/n)"; while("y","n" -notcontains $ynSubscription ) { $ynSubscription = Read-Host "Confirm: Hybrid identity lab will be deployed on subscription $(az account show --query 'name') (ID: $(az account show --query 'id')) (y/n)" }
+$subid = az account show --query 'id'
+$ynSubscription = Read-Host "Confirm: Hybrid identity lab will be deployed on subscription $(az account show --query 'name') (ID: $($subid)) (y/n)";
+while("y","n" -notcontains $ynSubscription ) { $ynSubscription = Read-Host "Confirm: Hybrid identity lab will be deployed on subscription $(az account show --query 'name') (ID: $($subid)) (y/n)" }
 
 if ($ynSubscription -eq "n") {
 	Write-Host ">> Canceling the script. Use `"az account set <subscription>`" first to set context and run again".
@@ -24,7 +26,7 @@ $rg = Read-Host "Enter name for ResourceGroup"
 $prefix = Read-Host "Enter prefix for Azure resources"
 
 $rgExists = az group exists --name $($prefix+$rg)
-if ($rgExists -equals "True") {
+if ($rgExists -eq "True") {
 	$ynDelete = Read-Host "Confirm: Given ResourceGroup name '$($prefix+$rg)' already exists. Delete ResourceGroup to start all over (y/n)?"; while("y","n" -notcontains $ynDelete ) { $ynDelete = Read-Host "Confirm: Given ResourceGroup name '$($prefix+$rg)' already exists. Delete ResourceGroup to start all over (y/n)?" }
 	if ($ynDelete -eq 'y') {
 		az group delete --name $($prefix+$rg)
