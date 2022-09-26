@@ -24,7 +24,7 @@ $rg = Read-Host "Enter name for ResourceGroup"
 $prefix = Read-Host "Enter prefix for Azure resources"
 
 $rgExists = az group exists --name $($prefix+$rg)
-if ($rgExists) {
+if ($rgExists -equals "True") {
 	$ynDelete = Read-Host "Confirm: Given ResourceGroup name '$($prefix+$rg)' already exists. Delete ResourceGroup to start all over (y/n)?"; while("y","n" -notcontains $ynDelete ) { $ynDelete = Read-Host "Confirm: Given ResourceGroup name '$($prefix+$rg)' already exists. Delete ResourceGroup to start all over (y/n)?" }
 	if ($ynDelete -eq 'y') {
 		az group delete --name $($prefix+$rg)
@@ -116,8 +116,7 @@ az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcf
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$certRefs=Get-AdfsCertificate -CertificateType Token-Signing;`$certBytes=`$certRefs[0].Certificate.Export([System.Security.Cryptography.X509Certificates.X509ContentType]::Cert);[System.IO.File]::WriteAllBytes('C:\users\tokenSigning.cer', `$certBytes)" --verbose
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Sleep 10; Copy-Item -Path `"C:\users\tokenSigning.cer`" -Destination `"Z:\tokenSigning.cer`"" --verbose
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/msuda84/gtslab/main/hybrididentity_ClaimsXrayManager.ps1' -OutFile 'C:\Users\hybrididentity_ClaimsXrayManager.ps1'" --verbose
-az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "C:\Users\hybrididentity_ClaimsXrayManager.ps1" --verbose
-#az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "@C:\Users\hybrididentity_ClaimsXrayManager.ps1" --verbose
+az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "@C:\Users\hybrididentity_ClaimsXrayManager.ps1" --verbose
 
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Install & register (opt.) ADFS/ADDS Connect Health on dcfs01"
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Invoke-WebRequest -Uri 'https://download.microsoft.com/download/9/F/5/9F53F124-C990-42D2-8A32-6D352A67762B/AdHealthAdfsAgentSetup.exe' -OutFile 'C:\Users\AdHealthAdfsAgentSetup.exe'" --verbose
@@ -160,6 +159,7 @@ if ($certExists -eq "True") {
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "cmdkey /add:`"$($cd.Name).file.core.windows.net`" /user:`"localhost\$($cd.Name)`" /pass:`"$key`"" --verbose
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Sleep 10; Copy-Item -Path `"Z:\cert.pfx`" -Destination `"C:\Users\cert.pfx`"" --verbose
 } else {
+	
 	Write-Host "############"
 	Write-Host "## cert.pfx not found in CloudShare-folder, connect via RDP ($($wap01pip):3389) and upload certificate as `"cert.pfx`" in `"C:\users\$($adminacc)`""
 	Write-Host "############"
@@ -183,7 +183,7 @@ Write-Host "Call to action: Modify public DNS record"
 Write-Host " => Add A-record for 'fs.$($domain)' pointing to $($wap01pip)"
 $end = Get-Date
 Write-Host "ClaimsXray has been integrated in your ADFS deployment. Give it a try at: https://adfshelp.microsoft.com/ClaimsXray"
-Write-Host "dcfs01 Public IP: $($dcfs01pip) - Authenticate using $($netbios)\$($adminacc)"
-Write-Host "wap01 Public IP: $($wap01pip) - Authenticate using $($adminacc)"
+Write-Host "dcfs01 Public IP: $($dcfs01pip)"
+Write-Host "wap01 Public IP: $($wap01pip)"
 Write-Host "SafeMode admin password used: $safemodepw"
 Write-Host "Overall it took ~ $(($end-$start).Seconds)min to install the Hybrid Identity lab"
