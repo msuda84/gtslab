@@ -44,7 +44,6 @@ $domain= Read-Host "Enter domain"
 $netbios = $domain.split(".")[0]
 $timezone = "W. Europe Standard Time"
 $ynAutoShutdownUTC = Read-Host "Want to shutdown VMs at 7pm UTC? (y/n)"; while("y","n" -notcontains $ynAutoShutdownUTC ) { $ynAutoShutdownUTC = Read-Host "Want to shutdown VMs at 7pm UTC? (y/n)" }
-$ynBastion = Read-Host "Want to deploy BastionHost to connect via Browser (recommended)? (y/n)"; while("y","n" -notcontains $ynBastion) { $ynBastion = Read-Host "Want to deploy BastionHost to connect via Browser (recommended)? (y/n)" }
 $ynInstallAADHealthSet = Read-Host "Want to enable ADDS/ADFS Health services (requieres non-MFA'd GA)? (y/n)"; while("y","n" -notcontains $ynInstallAADHealthSet ) { $ynInstallAADHealthSet = Read-Host "Want to enable ADDS/ADFS Health services (requieres non-MFA'd GA)" }
 If ($ynInstallAADHealthSet -eq "y") {
 	$tenantadminacc = Read-Host "Enter GA username"
