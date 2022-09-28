@@ -183,7 +183,7 @@ az vm restart --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --force
 az network nsg rule delete --resource-group "$($prefix+$rg)"--nsg-name  "$($prefix)vNet-NSG" --name "AllowAnyHTTPSInbound" --verbose
 Write-Host "Call to action: Modify public DNS record: Add A-record for 'fs.$($domain)' pointing to $($wap01pip)"
 $end = Get-Date
-Write-Host "Access ADFS sign-in endpoint: https://fs.$($domain)/adfs/ls/idpinitiatedsignon
+Write-Host "Access ADFS sign-in endpoint: https://fs.$($domain)/adfs/ls/idpinitiatedsignon"
 Write-Host "Access integrated ClaimsXray service: https://adfshelp.microsoft.com/ClaimsXray"
 Write-Host "Public IP dcfs01: $($dcfs01pip)"
 Write-Host "Public IP wap01: $($wap01pip)"
