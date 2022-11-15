@@ -195,7 +195,7 @@ az network nsg rule delete --resource-group "$($prefix+$rg)"--nsg-name  "$($pref
 Write-Host "Call to action: Modify public DNS record"
 Write-Host " => Add A-record for 'fs.$($domain)' pointing to $($wap01pip)"
 $end = Get-Date
-Write-Host "Access ADFS-Sign-In page: https://fs.$($domain)/adfs/ls/idpinitiatedsignon
+Write-Host "Access ADFS-Sign-In page: https://fs.$($domain)/adfs/ls/idpinitiatedsignon"
 Write-Host "ClaimsXray has been integrated in your ADFS deployment. Give it a try at: https://adfshelp.microsoft.com/ClaimsXray"
 Write-Host "wap01 Public IP: $($wap01pip)"
 Write-Host "SafeMode admin password used: $safemodepw"
