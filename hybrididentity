@@ -68,7 +68,7 @@ az network nsg rule create --resource-group "$($prefix+$rg)" --nsg-name "$($pref
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create and configure Virtual Network"
 az network vnet create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet" --address-prefix 10.0.0.0/16 --subnet-name default --subnet-prefix 10.0.0.0/24 --location $loc --network-security-group "$($prefix)vNet-NSG"--dns-servers 10.0.0.4 --verbose
 az network vnet subnet create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --name "AzureBastionSubnet" --address-prefixes 10.0.1.0/24 --verbose
-az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet-PIP" --location $loc --sku Standard --nozone --verbose
+az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet-PIP" --location $loc --sku Standard --verbose
 az network bastion create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet-Bastion" --public-ip-address "$($prefix)vNet-PIP" --vnet-name "$($prefix)vNet" --location $loc --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Deploy DC&FS Virtual Machine"
 #az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --verbose
@@ -96,7 +96,7 @@ if ($certExists -eq "True") {
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "cmdkey /add:`"$($cd.Name).file.core.windows.net`" /user:`"localhost\$($cd.Name)`" /pass:`"$($key)`"" --verbose
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Copy-Item -Path 'Z:\$($domain).cert.pfx' -Destination 'C:\Users\$($domain).cert.pfx'" --verbose
 } else {
-	az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --public-ip-sku Standard --verbose
+	az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --location $loc --sku Standard --verbose
 	$dcfs01pip = az network public-ip show --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --query "{address: ipAddress}" --out tsv
 	az network nic ip-config update --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --nic-name "$($prefix)dcfs01-NIC" --name "ipconfig1" --public-ip-address "$($prefix)dcfs01-PIP" --verbose
 	Write-Host "############"
