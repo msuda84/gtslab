@@ -1,6 +1,6 @@
 $subid = az account show --query 'id'
-$ynSubscription = Read-Host "Confirm: Hybrid identity lab will be deployed on subscription $(az account show --query 'name') (ID: $($subid)) (y/n)";
-while("y","n" -notcontains $ynSubscription ) { $ynSubscription = Read-Host "Confirm: Hybrid identity lab will be deployed on subscription $(az account show --query 'name') (ID: $($subid)) (y/n)" }
+$ynSubscription = Read-Host "Hybrid identity lab will be deployed on subscription $(az account show --query 'name') (ID: $($subid)) (y/n)";
+while("y","n" -notcontains $ynSubscription ) { $ynSubscription = Read-Host "Hybrid identity lab will be deployed on subscription $(az account show --query 'name') (ID: $($subid)) (y/n)" }
 
 if ($ynSubscription -eq "n") {
 	Write-Host ">> Canceling the script. Use `"az account set <subscription>`" first to set context and run again".
