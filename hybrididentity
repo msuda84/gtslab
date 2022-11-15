@@ -9,7 +9,7 @@ if ($ynSubscription -eq "n") {
 
 #set vars
 $start = Get-Date
-$1234loc = Read-Host "Where do you want to deploy (1..3)? (1) AMERICA (2) APAC (3) EUROPE (4)"; while("1","2","3", "4" -notcontains $1234loc ) { $1234loc = Read-Host "Where do you want to deploy (1..3)? (1) AMERICA (2) APAC (3) EUROPE" }
+$1234loc = Read-Host "Where do you want to deploy (1..4)? (1) AMERICA (2) APAC (3) EUROPE (4) Specify region"; while("1","2","3", "4" -notcontains $1234loc ) { $1234loc = Read-Host "Where do you want to deploy (1..4)? (1) AMERICA (2) APAC (3) EUROPE" }
 Switch ($1234loc)
 {
     "1" {$loc="eastus"}
@@ -34,11 +34,11 @@ $prefix = Read-Host "Enter prefix for Azure resources"
 
 $rgExists = az group exists --name $($prefix+$rg)
 if ($rgExists -eq "True") {
-	$ynDelete = Read-Host "Confirm: Given ResourceGroup name '$($prefix+$rg)' already exists. Delete ResourceGroup to start all over (y/n)?"; while("y","n" -notcontains $ynDelete ) { $ynDelete = Read-Host "Confirm: Given ResourceGroup name '$($prefix+$rg)' already exists. Delete ResourceGroup to start all over (y/n)?" }
+	$ynDelete = Read-Host "Given ResourceGroup '$($prefix+$rg)' already exists. Do you want to delete this first and start all over (y/n)?"; while("y","n" -notcontains $ynDelete ) { $ynDelete = Read-Host "Given ResourceGroup '$($prefix+$rg)' already exists. Do you want to delete this first and start all over (y/n)?" }
 	if ($ynDelete -eq 'y') {
-		az group delete --name $($prefix+$rg)
+		az group delete --name $($prefix+$rg) --yes
 	} else {
-		Write-Host ">> Canceling the script. Start over again and define another resource group name than '$($prefix+$rg)'".
+		Write-Host ">> Canceling the script. Start over again and define a resource group name other than '$($prefix+$rg)'".
 		Break
 	}
 }
@@ -68,7 +68,7 @@ az network nsg rule create --resource-group "$($prefix+$rg)" --nsg-name "$($pref
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create and configure Virtual Network"
 az network vnet create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet" --address-prefix 10.0.0.0/16 --subnet-name default --subnet-prefix 10.0.0.0/24 --location $loc --network-security-group "$($prefix)vNet-NSG"--dns-servers 10.0.0.4 --verbose
 az network vnet subnet create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --name "AzureBastionSubnet" --address-prefixes 10.0.1.0/24 --verbose
-az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet-PIP" --location $loc --sku Standard --verbose
+az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet-PIP" --location $loc --public-ip-sku Standard --verbose
 az network bastion create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet-Bastion" --public-ip-address "$($prefix)vNet-PIP" --vnet-name "$($prefix)vNet" --location $loc --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Deploy DC&FS Virtual Machine"
 #az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --verbose
@@ -85,8 +85,8 @@ if ($ynAutoShutdownUTC -eq "y") { az vm auto-shutdown --resource-group "$($prefi
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Add ADDS feature and promote"
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Add-WindowsFeature AD-Domain-Services -IncludeManagementTools" --verbose
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Import-Module ADDSDeployment; Install-ADDSForest -CreateDnsDelegation:`$false  -DomainMode 'WinThreshold' -DomainName $domain -DomainNetbiosName '$netbios' -ForestMode 'WinThreshold' -InstallDns:`$true -NoRebootOnCompletion:`$true -Force:`$true -SkipPreChecks -SafeModeAdministratorPassword (ConvertTo-SecureString '$safemodepw' -AsPlainText -Force)" --verbose
-az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Set-ADDefaultDomainPasswordPolicy -ComplexityEnabled `$false -MinPasswordAge 0 -MinPasswordLength 0 -identity $domain" --verbose
 az vm restart --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --force --verbose
+az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Set-ADDefaultDomainPasswordPolicy -ComplexityEnabled `$false -MinPasswordAge 0 -MinPasswordLength 0 -identity $domain" --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Import PFX as Federation Service requirement"
 $certExists = az storage file exists --account-key $key --account-name $cd.StorageAccountName --path "$($domain).cert.pfx" --share-name $cd.FileShareName --out tsv
 if ($certExists -eq "True") {
@@ -96,9 +96,9 @@ if ($certExists -eq "True") {
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "cmdkey /add:`"$($cd.Name).file.core.windows.net`" /user:`"localhost\$($cd.Name)`" /pass:`"$($key)`"" --verbose
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Copy-Item -Path 'Z:\$($domain).cert.pfx' -Destination 'C:\Users\$($domain).cert.pfx'" --verbose
 } else {
-	az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --sku Standard --verbose
+	az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --public-ip-sku Standard --verbose
 	$dcfs01pip = az network public-ip show --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --query "{address: ipAddress}" --out tsv
-	az network nic ip-config update --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)dcfs01-NIC" --public-ip-address "$($prefix)dcfs01-PIP" --verbose
+	az network nic ip-config update --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --nic-name "$($prefix)dcfs01-NIC" --name "ipconfig1" --public-ip-address "$($prefix)dcfs01-PIP" --verbose
 	Write-Host "############"
 	Write-Host "## `"$($domain).cert.pfx`" not found in CloudShare-folder, connect via RDP ($($dcfs01pip):3389) and upload certificate as `"$($domain).cert.pfx`" in `"C:\users\`""
 	Write-Host "############"
