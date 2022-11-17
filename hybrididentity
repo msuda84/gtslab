@@ -30,7 +30,7 @@ if ($availableSizes -notcontains $size) {
 	}
 }
 $rg = Read-Host "Enter name for ResourceGroup"
-$prefix = Read-Host "Enter prefix for Azure resources"
+$prefix = Read-Host "Enter prefix for Azure resources (optional)"
 
 $rgExists = az group exists --name $($prefix+$rg)
 if ($rgExists -eq "True") {
@@ -44,7 +44,7 @@ if ($rgExists -eq "True") {
 }
 
 $adminacc = Read-Host "Enter Local & Domain Admin username"
-$adminpw = Read-Host "Enter Local & Domain Admin password" -MaskInput
+$adminpw = Read-Host "Enter Local & Domain Admin complex password (8c. min)" -MaskInput
 $safemodepw = -join ((40..93) + (97..122) | Get-Random -Count 20 | foreach {[char]$_})
 $certpw = Read-Host "Enter certificate password" -MaskInput
 $domain= Read-Host "Enter domain"
