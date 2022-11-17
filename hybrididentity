@@ -96,19 +96,21 @@ if ($certExists -eq "True") {
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "cmdkey /add:`"$($cd.Name).file.core.windows.net`" /user:`"localhost\$($cd.Name)`" /pass:`"$($key)`"" --verbose
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Copy-Item -Path 'Z:\$($domain).cert.pfx' -Destination 'C:\Users\$($domain).cert.pfx'" --verbose
 } else {
+	Write-Host "############"
+	Write-Host "## Adding (temporary) Public IP address to ease access to dcfs01"
 	az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --location $loc --sku Standard --verbose
 	$dcfs01pip = az network public-ip show --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --query "{address: ipAddress}" --out tsv
 	az network nic ip-config update --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --nic-name "$($prefix)dcfs01-NIC" --name "ipconfig1" --public-ip-address "$($prefix)dcfs01-PIP" --verbose
-	Write-Host "############"
 	Write-Host "## `"$($domain).cert.pfx`" not found in CloudShare-folder, connect via RDP ($($dcfs01pip):3389) and upload certificate as `"$($domain).cert.pfx`" in `"C:\users\`""
 	Write-Host "############"
 	Pause
+	az network nic ip-config update --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --nic-name "$($prefix)dcfs01-NIC" --name "ipconfig1" --remove PublicIpAddress --verbose
 	az network public-ip delete --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --verbose
 }
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Add ADFS feature and configure federation service"
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Import-PfxCertificate -FilePath 'C:\Users\$($domain).cert.pfx' -CertStoreLocation Cert:\LocalMachine\My -Password (ConvertTo-SecureString -String '$certpw' -AsPlainText -Force )" --verbose
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Enable-ADOptionalFeature 'Recycle Bin Feature' -Scope ForestOrConfigurationSet -Target '$domain' -Confirm:`$false" --verbose
-#az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-ADOrganizationalUnit `"SyncAADC`"; New-ADOrganizationalUnit `"SyncCPA`"; " --verbose
+#az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-ADOrganizationalUnit `"_SyncAADConnect`"; New-ADOrganizationalUnit `"_SyncCloudSyncAgent`"; " --verbose
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Add-KdsRootKey -EffectiveTime (Get-Date).AddHours(-10)" --verbose
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Add-WindowsFeature adfs-federation -IncludeManagementTools" --verbose
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "`$thumbprint = (Get-ChildItem Cert:\LocalMachine\My | where{`$_.Subject -eq 'CN=$domain'}).thumbprint; Import-Module ADFS; Install-AdfsFarm -CertificateThumbprint:`$thumbprint -FederationServiceDisplayName:'FS $domain' -FederationServiceName:'fs.$domain' -GroupServiceAccountIdentifier:'$netbios\fsgMSA`$' -Credential (New-Object System.Management.Automation.PSCredential -ArgumentList ('$adminacc@$domain', (ConvertTo-SecureString -String '$adminpw' -AsPlainText -Force )))" --verbose
