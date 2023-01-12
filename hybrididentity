@@ -82,8 +82,13 @@ Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Deploy DC&FS Virtual Machi
 #az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --verbose
 #$dcfs01pip = az network public-ip show --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --query "{address: ipAddress}" --out tsv
 #az network nic create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)dcfs01-NIC" --public-ip-address "$($prefix)dcfs01-PIP" --private-ip-address "10.0.0.4" --verbose
-az network nic create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)dcfs01-NIC" --network-security-group "$($prefix)vNet-NSG" --private-ip-address "10.0.0.4" --verbose
-az vm create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --image Win2022Datacenter --admin-username $adminacc --admin-password $adminpw --size $size --nsg '""' --generate-ssh-keys --os-disk-name "$($prefix)dcfs01-OsDisk" --public-ip-address '""' --nics "$($prefix)dcfs01-NIC" --verbose
+az network nic create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)dcfs01-NIC" --network-security-group "$($prefix)vNet-NSG" --public-ip-address "''" --private-ip-address "10.0.0.4" --verbose
+Write-Host $adminacc
+Write-Host $adminpw
+Write-Host $prefix
+Write-Host $rg
+Write-Host $size
+az vm create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --image Win2022Datacenter --admin-username $adminacc --admin-password $adminpw --size $size --generate-ssh-keys --os-disk-name "$($prefix)dcfs01-OsDisk" --public-ip-address '""' --nics "$($prefix)dcfs01-NIC" --verbose
 #az vm disk attach --resource-group "$($prefix+$rg)"  --vm-name "$($prefix)dcfs01" --name "$($prefix)dcfs01-DataDisk" --size-gb 10 --new --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Configure DCFS Virtual Machine"
 #az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Set-Volume -FileSystemLabel 'Windows' -NewFileSystemLabel 'OSDisk'; Initialize-disk 2; New-Partition -DiskNumber 2 -AssignDriveLetter -UseMaximumSize; Format-Volume -DriveLetter F -FileSystem NTFS -NewFileSystemLabel 'DataDisk'" --verbose
@@ -107,11 +112,11 @@ if ($certExists -eq "True") {
 	#Upload cert to KeyVault as backup
 	az keyvault certificate import --vault-name $kvName --name "$($prefix)ADFS-$($domain.replace('.',''))" --file "/home/marco/clouddrive/"$($domain).cert.pfx"" --password $certpw
 } else {
-	Write-Host "############"
-	Write-Host "## Adding (temporary) Public IP address to ease access to dcfs01"
 	az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --location $loc --sku Standard --verbose
 	$dcfs01pip = az network public-ip show --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --query "{address: ipAddress}" --out tsv
 	az network nic ip-config update --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --nic-name "$($prefix)dcfs01-NIC" --name "ipconfig1" --public-ip-address "$($prefix)dcfs01-PIP" --verbose
+	Write-Host "############"
+	Write-Host "## Added (temporary) Public IP address to ease access to dcfs01"
 	Write-Host "## `"$($domain).cert.pfx`" not found in CloudShare-folder, connect via RDP ($($dcfs01pip):3389) and upload certificate as `"$($domain).cert.pfx`" in `"C:\users\`""
 	Write-Host "############"
 	Pause
