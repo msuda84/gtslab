@@ -74,7 +74,7 @@ az network nsg create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet-N
 az network nsg rule create --resource-group "$($prefix+$rg)"--nsg-name  "$($prefix)vNet-NSG" --name "AllowAnyHTTPSInbound"  --priority 1000 --access Allow --source-address-prefixes "*" --source-port-ranges "*" --direction Inbound --destination-port-ranges 443 --verbose
 az network nsg rule create --resource-group "$($prefix+$rg)" --nsg-name "$($prefix)vNet-NSG" --name "AllowAnyRDPInbound" --priority 1010 --access Allow --source-address-prefixes "*" --source-port-ranges "*" --direction Inbound --destination-port-ranges 3389 --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create and configure Virtual Network ($($prefix)vNet)"
-az network vnet create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet" --address-prefix 10.0.0.0/16 --subnet-name default --subnet-prefix 10.0.0.0/24 --location $loc --network-security-group "$($prefix)vNet-NSG"--dns-servers 10.0.0.4 --verbose
+az network vnet create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet" --address-prefix 10.0.0.0/16 --subnet-name default --subnet-prefix 10.0.0.0/24 --location $loc --network-security-group "$($prefix)vNet-NSG" --dns-servers 10.0.0.4 --verbose
 az network vnet subnet create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --name "AzureBastionSubnet" --address-prefixes 10.0.1.0/24 --verbose
 az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet-PIP" --location $loc --sku Standard --verbose
 az network bastion create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet-Bastion" --public-ip-address "$($prefix)vNet-PIP" --vnet-name "$($prefix)vNet" --location $loc --verbose
@@ -82,11 +82,8 @@ Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Deploy DC&FS Virtual Machine ($(
 #az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --verbose
 #$dcfs01pip = az network public-ip show --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --query "{address: ipAddress}" --out tsv
 #az network nic create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)dcfs01-NIC" --public-ip-address "$($prefix)dcfs01-PIP" --private-ip-address "10.0.0.4" --verbose
-az network nic create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)dcfs01-NIC" --network-security-group "$($prefix)vNet-NSG" --public-ip-address "$($prefix)dcfs01-PIP" --private-ip-address "10.0.0.4" --verbose
+az network nic create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)dcfs01-NIC" --private-ip-address "10.0.0.4" --verbose
 az vm create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --image Win2022Datacenter --admin-username $adminacc --admin-password $adminpw --size $size --os-disk-name "$($prefix)dcfs01-OsDisk" --nics "$($prefix)dcfs01-NIC" --verbose
-#Remove auto-created PIP
-az network nic ip-config update --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --nic-name "$($prefix)dcfs01-NIC" --name "ipconfig1" --remove PublicIpAddress --verbose
-az network public-ip delete --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --verbose
 #az vm disk attach --resource-group "$($prefix+$rg)"  --vm-name "$($prefix)dcfs01" --name "$($prefix)dcfs01-DataDisk" --size-gb 10 --new --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Configure DCFS Virtual Machine ($($prefix)dcfs01)"
 #az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Set-Volume -FileSystemLabel 'Windows' -NewFileSystemLabel 'OSDisk'; Initialize-disk 2; New-Partition -DiskNumber 2 -AssignDriveLetter -UseMaximumSize; Format-Volume -DriveLetter F -FileSystem NTFS -NewFileSystemLabel 'DataDisk'" --verbose
@@ -170,7 +167,7 @@ az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcf
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] WAP: Deploy WAP Virtual Machine"
 az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)wap01-PIP" --sku Standard --verbose
 $wap01pip = az network public-ip show  --resource-group "$($prefix)$($rg)" --name "$($prefix)wap01-PIP" --query "{address: ipAddress}" --out tsv
-az network nic create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)wap01-NIC" --network-security-group "$($prefix)vNet-NSG" --public-ip-address "$($prefix)wap01-PIP" --private-ip-address "10.0.0.10" --verbose
+az network nic create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)wap01-NIC" --public-ip-address "$($prefix)wap01-PIP" --private-ip-address "10.0.0.10" --verbose
 az vm create --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --image Win2022Datacenter --admin-username $adminacc --admin-password $adminpw --size $size --os-disk-name "$($prefix)wap01-OsDisk" --nics "$($prefix)wap01-NIC" --verbose
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] WAP: Configure WAP Virtual Machine"
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)wap01" --command-id RunPowerShellScript --scripts "Set-Volume -FileSystemLabel 'Windows' -NewFileSystemLabel 'OSDisk'" --verbose 
