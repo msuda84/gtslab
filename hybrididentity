@@ -58,16 +58,15 @@ If ($ynInstallAADHealthSet -eq "y") {
 }
 $cd = Get-CloudDrive
 $key = az storage account keys list -g $cd.ResourceGroupName -n $cd.StorageAccountName --query [0].value -o tsv
-$kvName = "$($prefix)kv-$($domain.replace('.',''))"
+$kvName = "$($prefix)kv-$($domain.replace('.',''))-$( -join ((48..57) + (65..90) | Get-Random -Count 5 | foreach {[char]$_}))"
 
-Write-Host "Using $($safemodepw) as the Domain Admin safemode password"
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create Resource Group"
 az group create --name "$($prefix+$rg)"  --location $loc --verbose
 
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create and configure Azure Key Vault ($($kvName))"
 az keyvault create --name $kvName --resource-group "$($prefix+$rg)" --location $loc --public-network-access Enabled --enabled-for-deployment $true --enabled-for-template-deployment $true
-az keyvault secret set --vault-name $kvName --name "$($prefix)DC-SafeModePassword" --value $safemodepw
-az keyvault secret set --vault-name $kvName --name "$($prefix)AdminPassword" --value $adminpw
+az keyvault secret set --vault-name $kvName --name "$($prefix)DC-SafeMode-Password" --value $safemodepw
+az keyvault secret set --vault-name $kvName --name "$($prefix)LocalAdmin-Password" --value $adminpw
 az keyvault secret set --vault-name $kvName --name "$($prefix)ADFS-$($domain.replace('.',''))-Password" --value $certpw
 
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create and configure Network Security Group"
@@ -105,14 +104,14 @@ if ($certExists -eq "True") {
 	Write-Host "############"
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "cmdkey /add:`"$($cd.Name).file.core.windows.net`" /user:`"localhost\$($cd.Name)`" /pass:`"$($key)`"" --verbose
 	az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "New-PSDrive -Name Z -PSProvider FileSystem -Root '\\$($cd.Name).file.core.windows.net\$($cd.FileShareName)'; Copy-Item -Path 'Z:\$($domain).cert.pfx' -Destination 'C:\Users\$($domain).cert.pfx'" --verbose
-	#Upload cert to KeyVault for backup purposes
+	#Upload cert to KeyVault as backup
 	az keyvault certificate import --vault-name $kvName --name "$($prefix)ADFS-$($domain.replace('.',''))" --file "/home/marco/clouddrive/"$($domain).cert.pfx"" --password $certpw
 } else {
+	Write-Host "############"
+	Write-Host "## Adding (temporary) Public IP address to ease access to dcfs01"
 	az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --location $loc --sku Standard --verbose
 	$dcfs01pip = az network public-ip show --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --query "{address: ipAddress}" --out tsv
 	az network nic ip-config update --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --nic-name "$($prefix)dcfs01-NIC" --name "ipconfig1" --public-ip-address "$($prefix)dcfs01-PIP" --verbose
-	Write-Host "############"
-	Write-Host "## Adding (temporary) Public IP address to ease access to dcfs01"
 	Write-Host "## `"$($domain).cert.pfx`" not found in CloudShare-folder, connect via RDP ($($dcfs01pip):3389) and upload certificate as `"$($domain).cert.pfx`" in `"C:\users\`""
 	Write-Host "############"
 	Pause
