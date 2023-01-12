@@ -60,7 +60,7 @@ $cd = Get-CloudDrive
 $key = az storage account keys list -g $cd.ResourceGroupName -n $cd.StorageAccountName --query [0].value -o tsv
 $kvName = "$($prefix)kv-$($domain.replace('.',''))-$( -join ((48..57) + (65..90) | Get-Random -Count 5 | foreach {[char]$_}))"
 
-Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create Resource Group"
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create Resource Group ($($prefix+$rg))"
 az group create --name "$($prefix+$rg)"  --location $loc --verbose
 
 Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create and configure Azure Key Vault ($($kvName))"
@@ -69,37 +69,37 @@ az keyvault secret set --vault-name $kvName --name "$($prefix)DC-SafeMode-Passwo
 az keyvault secret set --vault-name $kvName --name "$($prefix)LocalAdmin-Password" --value $adminpw
 az keyvault secret set --vault-name $kvName --name "$($prefix)ADFS-$($domain.replace('.',''))-Password" --value $certpw
 
-Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create and configure Network Security Group"
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create and configure Network Security Group ($($prefix)vNet-NSG)"
 az network nsg create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet-NSG" --location $loc --verbose
 az network nsg rule create --resource-group "$($prefix+$rg)"--nsg-name  "$($prefix)vNet-NSG" --name "AllowAnyHTTPSInbound"  --priority 1000 --access Allow --source-address-prefixes "*" --source-port-ranges "*" --direction Inbound --destination-port-ranges 443 --verbose
 az network nsg rule create --resource-group "$($prefix+$rg)" --nsg-name "$($prefix)vNet-NSG" --name "AllowAnyRDPInbound" --priority 1010 --access Allow --source-address-prefixes "*" --source-port-ranges "*" --direction Inbound --destination-port-ranges 3389 --verbose
-Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create and configure Virtual Network"
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Create and configure Virtual Network ($($prefix)vNet)"
 az network vnet create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet" --address-prefix 10.0.0.0/16 --subnet-name default --subnet-prefix 10.0.0.0/24 --location $loc --network-security-group "$($prefix)vNet-NSG"--dns-servers 10.0.0.4 --verbose
 az network vnet subnet create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --name "AzureBastionSubnet" --address-prefixes 10.0.1.0/24 --verbose
 az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet-PIP" --location $loc --sku Standard --verbose
 az network bastion create --resource-group "$($prefix+$rg)" --name "$($prefix)vNet-Bastion" --public-ip-address "$($prefix)vNet-PIP" --vnet-name "$($prefix)vNet" --location $loc --verbose
-Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Deploy DC&FS Virtual Machine"
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Deploy DC&FS Virtual Machine ($($prefix)dcfs01)"
 #az network public-ip create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --verbose
 #$dcfs01pip = az network public-ip show --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --query "{address: ipAddress}" --out tsv
 #az network nic create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)dcfs01-NIC" --public-ip-address "$($prefix)dcfs01-PIP" --private-ip-address "10.0.0.4" --verbose
-az network nic create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)dcfs01-NIC" --network-security-group "$($prefix)vNet-NSG" --public-ip-address "''" --private-ip-address "10.0.0.4" --verbose
+az network nic create --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --name "$($prefix)dcfs01-NIC" --network-security-group "$($prefix)vNet-NSG" --public-ip-address "$($prefix)dcfs01-PIP" --private-ip-address "10.0.0.4" --verbose
 az vm create --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --image Win2022Datacenter --admin-username $adminacc --admin-password $adminpw --size $size --os-disk-name "$($prefix)dcfs01-OsDisk" --nics "$($prefix)dcfs01-NIC" --verbose
 #Remove auto-created PIP
 az network nic ip-config update --resource-group "$($prefix+$rg)" --vnet-name "$($prefix)vNet" --subnet Default --nic-name "$($prefix)dcfs01-NIC" --name "ipconfig1" --remove PublicIpAddress --verbose
 az network public-ip delete --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01-PIP" --verbose
 #az vm disk attach --resource-group "$($prefix+$rg)"  --vm-name "$($prefix)dcfs01" --name "$($prefix)dcfs01-DataDisk" --size-gb 10 --new --verbose
-Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Configure DCFS Virtual Machine"
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Configure DCFS Virtual Machine ($($prefix)dcfs01)"
 #az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Set-Volume -FileSystemLabel 'Windows' -NewFileSystemLabel 'OSDisk'; Initialize-disk 2; New-Partition -DiskNumber 2 -AssignDriveLetter -UseMaximumSize; Format-Volume -DriveLetter F -FileSystem NTFS -NewFileSystemLabel 'DataDisk'" --verbose
 #az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Install-PackageProvider -Name NuGet -Force -confirm:`$false; Install-Module -Name PSWindowsUpdate -force -confirm:`$false; Install-WindowsUpdate -AcceptAll -WithHidden -IgnoreReboot" --verbose
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "net accounts /maxpwage:unlimited" --verbose
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Set-TimeZone -Name '$timezone' -PassThru" --verbose
 if ($ynAutoShutdownUTC -eq "y") { az vm auto-shutdown --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --time 1900 }
-Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Add ADDS feature and promote"
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Add ADDS feature and promote ($($prefix)dcfs01)"
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Add-WindowsFeature AD-Domain-Services -IncludeManagementTools" --verbose
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Import-Module ADDSDeployment; Install-ADDSForest -CreateDnsDelegation:`$false  -DomainMode 'WinThreshold' -DomainName $domain -DomainNetbiosName '$netbios' -ForestMode 'WinThreshold' -InstallDns:`$true -NoRebootOnCompletion:`$true -Force:`$true -SkipPreChecks -SafeModeAdministratorPassword (ConvertTo-SecureString '$safemodepw' -AsPlainText -Force)" --verbose
 az vm restart --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --force --verbose
 az vm run-command invoke --resource-group "$($prefix+$rg)" --name "$($prefix)dcfs01" --command-id RunPowerShellScript --scripts "Set-ADDefaultDomainPasswordPolicy -ComplexityEnabled `$false -MinPasswordAge 0 -MinPasswordLength 0 -identity $domain" --verbose
-Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] DCFS: Import PFX as Federation Service requirement"
+Write-Host ">> [$(Get-Date -Format 'HH:mm:ss')] Import PFX as Federation Service requirement ($($prefix)dcfs01)"
 $certExists = az storage file exists --account-key $key --account-name $cd.StorageAccountName --path "$($domain).cert.pfx" --share-name $cd.FileShareName --out tsv
 if ($certExists -eq "True") {
 	Write-Host "############"
